@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Amaru — Mapa Interactivo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  :root{
+    --canopy-950:#132018;
+    --canopy-900:#1B2E1F;
+    --canopy-700:#2E4A34;
+    --moss-500:#3F6144;
+    --teal-500:#2F8577;
+    --gold-500:#D9A441;
+    --gold-300:#EAC97A;
+    --parchment:#EFE7D8;
+    --parchment-dim:#C9C0AC;
+    --crit:#C3543E;
+    --font-display:'Fraunces', Georgia, 'Iowan Old Style', serif;
+    --font-body:'Work Sans', 'Segoe UI', sans-serif;
+    --font-mono:'JetBrains Mono', 'Courier New', monospace;
+  }
+  @font-face{font-family:'Fraunces';src:local('Georgia');}
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(ellipse at 20% 0%, rgba(217,164,65,0.08), transparent 55%),
+      radial-gradient(ellipse at 80% 100%, rgba(47,133,119,0.10), transparent 55%),
+      var(--canopy-950);
+    color:var(--parchment);
+    font-family:var(--font-body);
+    min-height:100vh;
+    padding:28px 24px 40px;
+  }
+  .wrap{max-width:1180px;margin:0 auto;}
+
+  header{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    flex-wrap:wrap;
+    gap:16px;
+    border-bottom:1px solid rgba(239,231,216,0.15);
+    padding-bottom:18px;
+    margin-bottom:22px;
+  }
+  .eyebrow{
+    font-family:var(--font-mono);
+    font-size:11px;
+    letter-spacing:.18em;
+    text-transform:uppercase;
+    color:var(--gold-300);
+    margin:0 0 6px;
+  }
+  h1{
+    font-family:var(--font-display);
+    font-weight:600;
+    font-size:clamp(32px,5vw,50px);
+    margin:0;
+    letter-spacing:.01em;
+    color:var(--parchment);
+  }
+  h1 span{color:var(--gold-500);font-style:italic;}
+  .subtitle{
+    font-size:14px;
+    color:var(--parchment-dim);
+    max-width:420px;
+    line-height:1.5;
+    margin-top:6px;
+  }
+
+  .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+  .btn{
+    font-family:var(--font-mono);
+    font-size:12px;
+    letter-spacing:.05em;
+    text-transform:uppercase;
+    background:transparent;
+    border:1px solid rgba(239,231,216,0.3);
+    color:var(--parchment);
+    padding:10px 16px;
+    border-radius:2px;
+    cursor:pointer;
+    transition:border-color .2s, background .2s, color .2s;
+  }
+  .btn:hover{border-color:var(--gold-500);color:var(--gold-300);}
+  .btn.active{background:var(--gold-500);border-color:var(--gold-500);color:var(--canopy-950);}
+  .search{
+    font-family:var(--font-body);
+    font-size:13px;
+    background:rgba(239,231,216,0.06);
+    border:1px solid rgba(239,231,216,0.2);
+    color:var(--parchment);
+    padding:9px 14px;
+    border-radius:2px;
+    min-width:180px;
+  }
+  .search::placeholder{color:var(--parchment-dim);}
+
+  .layout{
+    display:grid;
+    grid-template-columns:1.55fr 1fr;
+    gap:22px;
+    align-items:start;
+  }
+  @media (max-width:860px){ .layout{grid-template-columns:1fr;} }
+
+  .map-panel{
+    background:linear-gradient(180deg, rgba(239,231,216,0.03), rgba(239,231,216,0.01));
+    border:1px solid rgba(239,231,216,0.12);
+    border-radius:4px;
+    padding:6px;
+  }
+  svg{display:block;width:100%;height:auto;}
+
+  .zone{cursor:pointer;transition:filter .2s, transform .2s;transform-origin:center;}
+  .zone:hover{filter:brightness(1.25);}
+  .zone.selected{filter:brightness(1.35) saturate(1.2);}
+  .zone-label{
+    font-family:var(--font-mono);
+    font-size:12px;
+    fill:var(--parchment);
+    text-anchor:middle;
+    pointer-events:none;
+    letter-spacing:.03em;
+  }
+  .zone-icon{font-size:22px;text-anchor:middle;pointer-events:none;}
+
+  .route-path{
+    fill:none;
+    stroke:var(--gold-500);
+    stroke-width:3;
+    stroke-linecap:round;
+    stroke-dasharray:9 10;
+    opacity:0;
+    transition:opacity .4s;
+  }
+  .route-path.visible{opacity:0.9;animation:flow 2.4s linear infinite;}
+  @keyframes flow{to{stroke-dashoffset:-190;}}
+
+  .stop-num{
+    font-family:var(--font-mono);
+    font-size:11px;
+    fill:var(--canopy-950);
+    text-anchor:middle;
+    dominant-baseline:middle;
+    pointer-events:none;
+    opacity:0;
+    transition:opacity .3s;
+  }
+  .stop-num.visible{opacity:1;}
+  .stop-circle{opacity:0;transition:opacity .3s;}
+  .stop-circle.visible{opacity:1;}
+
+  .contour{fill:none;stroke:rgba(239,231,216,0.05);stroke-width:1.2;}
+
+  .panel{
+    background:rgba(239,231,216,0.04);
+    border:1px solid rgba(239,231,216,0.14);
+    border-radius:4px;
+    padding:22px 24px;
+    min-height:420px;
+  }
+  .panel-eyebrow{
+    font-family:var(--font-mono);
+    font-size:10px;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+    color:var(--teal-500);
+    margin-bottom:8px;
+  }
+  .panel h2{
+    font-family:var(--font-display);
+    font-size:26px;
+    margin:0 0 4px;
+    color:var(--gold-300);
+  }
+  .habitat-desc{
+    font-size:13.5px;
+    color:var(--parchment-dim);
+    line-height:1.55;
+    margin:10px 0 18px;
+    padding-bottom:16px;
+    border-bottom:1px dashed rgba(239,231,216,0.15);
+  }
+  .animal-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;}
+  .animal-card{
+    background:rgba(0,0,0,0.15);
+    border:1px solid rgba(239,231,216,0.1);
+    border-left:3px solid var(--teal-500);
+    border-radius:2px;
+    padding:12px 14px;
+    cursor:pointer;
+    transition:background .2s, border-color .2s;
+  }
+  .animal-card:hover{background:rgba(0,0,0,0.28);}
+  .animal-card.open{border-left-color:var(--gold-500);background:rgba(0,0,0,0.3);}
+  .animal-name{font-weight:600;font-size:14.5px;color:var(--parchment);}
+  .animal-sci{font-family:var(--font-mono);font-style:italic;font-size:11.5px;color:var(--parchment-dim);margin-left:6px;}
+  .animal-meta{
+    display:flex;justify-content:space-between;align-items:baseline;
+  }
+  .status-tag{
+    font-family:var(--font-mono);
+    font-size:9.5px;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    padding:3px 7px;
+    border-radius:2px;
+    background:rgba(217,164,65,0.15);
+    color:var(--gold-300);
+    white-space:nowrap;
+  }
+  .status-tag.critical{background:rgba(195,84,62,0.2);color:#E38571;}
+  .animal-desc{
+    font-size:12.5px;
+    color:var(--parchment-dim);
+    line-height:1.5;
+    margin-top:8px;
+    max-height:0;
+    overflow:hidden;
+    transition:max-height .3s ease;
+  }
+  .animal-card.open .animal-desc{max-height:120px;}
+
+  .intro{
+    font-size:13.5px;
+    color:var(--parchment-dim);
+    line-height:1.7;
+  }
+  .intro b{color:var(--gold-300);font-weight:600;}
+  .legend{
+    display:flex;
+    gap:14px;
+    flex-wrap:wrap;
+    margin-top:18px;
+    padding-top:14px;
+    border-top:1px dashed rgba(239,231,216,0.15);
+  }
+  .legend-item{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--parchment-dim);}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
+
+  footer{
+    margin-top:26px;
+    font-family:var(--font-mono);
+    font-size:10.5px;
+    color:var(--parchment-dim);
+    text-align:center;
+    letter-spacing:.03em;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <p class="eyebrow">Zoológico Amaru · Cuenca, Ecuador</p>
+      <h1>Mapa <span>Interactivo</span></h1>
+      <p class="subtitle">Recorre las zonas del parque, consulta los hábitats y descubre las especies que los habitan.</p>
+    </div>
+    <div class="controls">
+      <input class="search" id="search" type="text" placeholder="Buscar animal…">
+      <button class="btn" id="routeBtn">Mostrar ruta de Amaru</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <div class="map-panel">
+      <svg viewBox="0 0 1000 650" id="mapSvg">
+        <!-- contour lines: hillside terrain -->
+        <path class="contour" d="M -20 560 Q 250 500 500 560 T 1020 540"/>
+        <path class="contour" d="M -20 480 Q 250 420 500 480 T 1020 460"/>
+        <path class="contour" d="M -20 620 Q 250 590 500 620 T 1020 600"/>
+
+        <!-- route path (Amaru's trail) -->
+        <path id="routePath" class="route-path" d=""/>
+        <g id="stops"></g>
+
+        <!-- zones injected by JS -->
+        <g id="zones"></g>
+      </svg>
+    </div>
+
+    <div class="panel" id="panel">
+      <div class="intro" id="intro">
+        <p><b>Bienvenido al mapa de Amaru.</b> Este mapa interactivo representa el modelo de datos del parque: cada mancha del mapa es una <b>Zona</b>, dentro de ella hay uno o varios <b>Hábitats</b>, y cada hábitat alberga <b>Animales</b> de distintas <b>Especies</b>.</p>
+        <p>Toca cualquier zona del mapa para ver su información. Usa <b>«Mostrar ruta de Amaru»</b> para trazar el recorrido sugerido — la <b>Ruta</b> — entre las cinco zonas del parque.</p>
+        <div class="legend" id="legend"></div>
+      </div>
+    </div>
+  </div>
+
+  <footer>MODELO DE DATOS — ZONA · HÁBITAT · ANIMAL · ESPECIE · RUTA — GUÍA PRÁCTICA UNIDAD 2</footer>
+</div>
+
+<script>
+const zones = [
+  {
+    id:'serpentario', name:'Serpentario', icon:'🐍', color:'#2F8577', cx:190, cy:470,
+    radii:[46,70,50,85,48,72,52,90,44,68], // elongated organic
+    habitat:'Terrario tropical húmedo con troncos y vegetación densa que recrea el sotobosque amazónico.',
+    animals:[
+      {name:'Boa constrictor', sci:'Boa constrictor', status:'Preocupación menor', desc:'Serpiente no venenosa de gran tamaño, hábil trepadora y nadadora.'},
+      {name:'Rana marsupial', sci:'Gastrotheca riobambae', status:'Vulnerable', desc:'Anfibio andino que transporta sus huevos en una bolsa dorsal hasta la eclosión.'},
+      {name:'Iguana verde', sci:'Iguana iguana', status:'Preocupación menor', desc:'Reptil arborícola de gran tamaño, herbívoro y de hábitos diurnos.'}
+    ]
+  },
+  {
+    id:'aviario', name:'Aviario Andino', icon:'🦜', color:'#D9A441', cx:730, cy:190,
+    radii:[40,95,35,100,38,90,33,98,42,88], // spiky wing-like
+    habitat:'Espacio abierto cubierto por red superior, con vegetación nativa de altura para el vuelo.',
+    animals:[
+      {name:'Cóndor andino', sci:'Vultur gryphus', status:'Casi amenazada', desc:'Ave símbolo de los Andes; una de las aves voladoras más grandes del mundo.'},
+      {name:'Búho campestre', sci:'Asio flammeus', status:'Preocupación menor', desc:'Rapaz de hábitos crepusculares presente en páramos y valles interandinos.'},
+      {name:'Tangara multicolor', sci:'Chalcothraupis ruficervix', status:'Preocupación menor', desc:'Ave pequeña de plumaje vistoso, común en bosques nublados.'}
+    ]
+  },
+  {
+    id:'mamiferos', name:'Mamíferos de Montaña', icon:'🐻', color:'#3F6144', cx:500, cy:340,
+    radii:[80,85,78,88,82,86,79,84,81,87], // round
+    habitat:'Recinto amplio con vegetación de bosque montano, refugios naturales y piscina.',
+    animals:[
+      {name:'Oso de anteojos', sci:'Tremarctos ornatus', status:'Vulnerable', desc:'Único oso sudamericano; símbolo de la conservación andina.'},
+      {name:'Puma', sci:'Puma concolor', status:'Preocupación menor', desc:'Felino de gran tamaño con la distribución continental más amplia de América.'},
+      {name:'Venado de cola blanca', sci:'Odocoileus peruvianus', status:'Preocupación menor', desc:'Herbívoro característico de los valles interandinos.'}
+    ]
+  },
+  {
+    id:'primates', name:'Primates', icon:'🐒', color:'#8A5A3C', cx:660, cy:440,
+    radii:[60,75,58,90,62,78,55,92,60,76,58,84], // scalloped canopy
+    habitat:'Área boscosa con estructuras elevadas y puentes de cuerda para desplazamiento aéreo.',
+    animals:[
+      {name:'Mono araña', sci:'Ateles fusciceps', status:'En peligro crítico', desc:'Primate de cola prensil, gravemente amenazado por la pérdida de hábitat.', critical:true},
+      {name:'Chorongo', sci:'Lagothrix lagothricha', status:'Vulnerable', desc:'Mono lanudo de gran tamaño, propio de la Amazonía ecuatoriana.'}
+    ]
+  },
+  {
+    id:'educacion', name:'Centro de Conservación', icon:'🌿', color:'#B58A2E', cx:350, cy:540,
+    radii:[60,58,62,60,58,62], // hex-like, built structure
+    habitat:'Área de rescate, rehabilitación e interpretación ambiental para visitantes.',
+    animals:[]
+  }
+];
+
+const routeOrder = ['entrada','serpentario','educacion','mamiferos','primates','aviario','salida'];
+const anchors = {
+  entrada:{x:70, y:590},
+  salida:{x:900, y:110}
+};
+
+const svgNS = "http://www.w3.org/2000/svg";
+const zonesG = document.getElementById('zones');
+const stopsG = document.getElementById('stops');
+const routePathEl = document.getElementById('routePath');
+
+// ---- build organic blob path from center + radii array ----
+function blobPath(cx, cy, radii){
+  const n = radii.length;
+  const pts = radii.map((r,i)=>{
+    const a = (i/n)*Math.PI*2 - Math.PI/2;
+    return {x:cx + r*Math.cos(a), y:cy + r*Math.sin(a)*0.75};
+  });
+  const p = (i)=>pts[(i+n)%n];
+  let d = `M ${p(0).x.toFixed(1)} ${p(0).y.toFixed(1)} `;
+  for(let i=0;i<n;i++){
+    const p0=p(i-1), p1=p(i), p2=p(i+1), p3=p(i+2);
+    const c1x = p1.x + (p2.x - p0.x)/6;
+    const c1y = p1.y + (p2.y - p0.y)/6;
+    const c2x = p2.x - (p3.x - p1.x)/6;
+    const c2y = p2.y - (p3.y - p1.y)/6;
+    d += `C ${c1x.toFixed(1)} ${c1y.toFixed(1)}, ${c2x.toFixed(1)} ${c2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)} `;
+  }
+  d += 'Z';
+  return d;
+}
+
+zones.forEach(z=>{
+  const g = document.createElementNS(svgNS,'g');
+  g.setAttribute('class','zone');
+  g.setAttribute('data-id', z.id);
+
+  const path = document.createElementNS(svgNS,'path');
+  path.setAttribute('d', blobPath(z.cx, z.cy, z.radii));
+  path.setAttribute('fill', z.color);
+  path.setAttribute('fill-opacity', '0.34');
+  path.setAttribute('stroke', z.color);
+  path.setAttribute('stroke-width', '1.6');
+  g.appendChild(path);
+
+  const icon = document.createElementNS(svgNS,'text');
+  icon.setAttribute('class','zone-icon');
+  icon.setAttribute('x', z.cx);
+  icon.setAttribute('y', z.cy - 2);
+  icon.textContent = z.icon;
+  g.appendChild(icon);
+
+  const label = document.createElementNS(svgNS,'text');
+  label.setAttribute('class','zone-label');
+  label.setAttribute('x', z.cx);
+  label.setAttribute('y', z.cy + 26);
+  label.textContent = z.name;
+  g.appendChild(label);
+
+  g.addEventListener('click', ()=>selectZone(z.id));
+  zonesG.appendChild(g);
+});
+
+// ---- route path through zone centers ----
+function routeCoords(){
+  return routeOrder.map(id=>{
+    if(anchors[id]) return anchors[id];
+    const z = zones.find(zz=>zz.id===id);
+    return {x:z.cx, y:z.cy};
+  });
+}
+function buildRouteD(){
+  const pts = routeCoords();
+  let d = `M ${pts[0].x} ${pts[0].y} `;
+  for(let i=1;i<pts.length;i++){
+    const prev = pts[i-1], cur = pts[i];
+    const mx = (prev.x+cur.x)/2, my = (prev.y+cur.y)/2;
+    d += `Q ${prev.x} ${prev.y}, ${mx} ${my} T ${cur.x} ${cur.y} `;
+  }
+  return d;
+}
+routePathEl.setAttribute('d', buildRouteD());
+
+// numbered stops (only actual zones, not entrance/exit)
+let stopNum = 1;
+routeOrder.forEach(id=>{
+  if(anchors[id]) return;
+  const z = zones.find(zz=>zz.id===id);
+  const circle = document.createElementNS(svgNS,'circle');
+  circle.setAttribute('class','stop-circle');
+  circle.setAttribute('cx', z.cx);
+  circle.setAttribute('cy', z.cy - 46);
+  circle.setAttribute('r', 11);
+  circle.setAttribute('fill', '#EAC97A');
+  stopsG.appendChild(circle);
+
+  const num = document.createElementNS(svgNS,'text');
+  num.setAttribute('class','stop-num');
+  num.setAttribute('x', z.cx);
+  num.setAttribute('y', z.cy - 46);
+  num.textContent = stopNum++;
+  stopsG.appendChild(num);
+});
+
+// ---- route toggle ----
+const routeBtn = document.getElementById('routeBtn');
+let routeOn = false;
+routeBtn.addEventListener('click', ()=>{
+  routeOn = !routeOn;
+  routeBtn.classList.toggle('active', routeOn);
+  routeBtn.textContent = routeOn ? 'Ocultar ruta de Amaru' : 'Mostrar ruta de Amaru';
+  routePathEl.classList.toggle('visible', routeOn);
+  document.querySelectorAll('.stop-circle,.stop-num').forEach(el=>el.classList.toggle('visible', routeOn));
+});
+
+// ---- legend ----
+const legend = document.getElementById('legend');
+zones.forEach(z=>{
+  const item = document.createElement('div');
+  item.className='legend-item';
+  item.innerHTML = `<span class="dot" style="background:${z.color}"></span>${z.name}`;
+  legend.appendChild(item);
+});
+
+// ---- panel rendering ----
+const panel = document.getElementById('panel');
+
+function statusClass(a){
+  return a.critical ? 'status-tag critical' : 'status-tag';
+}
+
+function renderZonePanel(z){
+  document.querySelectorAll('.zone').forEach(g=>g.classList.toggle('selected', g.dataset.id===z.id));
+
+  let animalsHtml = '';
+  if(z.animals.length){
+    animalsHtml = `<ul class="animal-list">` + z.animals.map((a,i)=>`
+      <li class="animal-card" data-idx="${i}">
+        <div class="animal-meta">
+          <span class="animal-name">${a.name}<span class="animal-sci">${a.sci}</span></span>
+          <span class="${statusClass(a)}">${a.status}</span>
+        </div>
+        <div class="animal-desc">${a.desc}</div>
+      </li>`).join('') + `</ul>`;
+  } else {
+    animalsHtml = `<p class="habitat-desc" style="border:none;padding-bottom:0;">Esta zona no aloja animales: es el punto de interpretación ambiental y rescate del parque.</p>`;
+  }
+
+  panel.innerHTML = `
+    <p class="panel-eyebrow">Zona seleccionada</p>
+    <h2>${z.icon} ${z.name}</h2>
+    <p class="habitat-desc">${z.habitat}</p>
+    ${animalsHtml}
+  `;
+
+  panel.querySelectorAll('.animal-card').forEach(card=>{
+    card.addEventListener('click', ()=>card.classList.toggle('open'));
+  });
+}
+
+function selectZone(id){
+  const z = zones.find(zz=>zz.id===id);
+  renderZonePanel(z);
+}
+
+// ---- search ----
+document.getElementById('search').addEventListener('input', (e)=>{
+  const q = e.target.value.trim().toLowerCase();
+  if(!q){ return; }
+  for(const z of zones){
+    const match = z.animals.find(a=>a.name.toLowerCase().includes(q));
+    if(match){
+      renderZonePanel(z);
+      setTimeout(()=>{
+        const idx = z.animals.indexOf(match);
+        const card = panel.querySelectorAll('.animal-card')[idx];
+        if(card){ card.classList.add('open'); card.scrollIntoView({block:'nearest'}); }
+      }, 30);
+      return;
+    }
+  }
+});
+</script>
+</body>
+</html>
